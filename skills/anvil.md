@@ -42,3 +42,56 @@ Create these `TaskCreate` tasks at the start of every Anvil run:
 10. Phase 7: Learn — write memory and session file
 11. Phase 8: Present — show diff and Evidence Bundle
 12. Phase 9: Commit — git commit with trailers and rollback command
+
+---
+
+## Phase 0a — Boost
+
+Transform the user's raw request into a precise internal specification before doing anything else.
+
+**Required outputs:**
+- **Target files:** Which files are likely affected (infer from imports, naming, project structure)
+- **Acceptance criteria:** What does "done" look like? Extract from the request or ask.
+- **Edge cases:** What didn't the user mention that could break things?
+- **Task ID:** Generate a kebab-case slug from the description (e.g. `fix-login-crash`, `add-user-pagination`)
+- **Task size:** Small / Medium / Large (see Task Sizing table above)
+- **Risk per file:** 🟢 low (utility, config) / 🟡 medium (business logic) / 🔴 high (auth, payments, crypto, data migrations)
+
+**Trigger Pushback Protocol if:**
+- The request is ambiguous or missing acceptance criteria
+- Scope is significantly larger than described
+- Any 🔴 file is in scope (always requires explicit acknowledgment)
+
+---
+
+## Pushback Protocol
+
+Triggered from Phase 0a (and at any later phase if new information changes the risk picture).
+
+**Trigger conditions:**
+- Ambiguous or missing acceptance criteria
+- Scope larger than the user described
+- A 🔴 file is in scope without explicit acknowledgment
+- Implementation would worsen existing tech debt materially
+- Missing critical context (no tests, no type info, untested code paths)
+- Requirement appears technically incorrect or contradictory
+
+**Always display this header before the question:**
+
+```
+⚠️ Anvil Pushback
+
+[Concern]: <specific issue found>
+[Risk]: <why it matters and what could go wrong>
+```
+
+**Then use `AskUserQuestion` with these options:**
+- A) Proceed anyway (I accept the risk)
+- B) Revise the approach: `<your suggested alternative>`
+- C) Cancel
+
+**Rules:**
+- Never auto-select an option
+- Never proceed past Pushback without a user choice
+- If user chooses B: return to Phase 0a with the revised approach
+- If user chooses C: stop and summarize what was found

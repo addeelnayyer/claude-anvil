@@ -1,0 +1,20 @@
+{
+  "name": "claude-anvil",
+  "description": "Evidence-first coding agent with adversarial multi-model review, SQL-tracked verification, and automatic rollback.",
+  "owner": {
+    "name": "Adeel Nayyer",
+    "email": "adeelnayyersheikh@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "anvil",
+      "description": "Evidence-first coding agent. Verifies every change with adversarial multi-model review, SQL-tracked verification, and automatic rollback.",
+      "version": "1.0.0",
+      "source": "./",
+      "author": {
+        "name": "Adeel Nayyer",
+        "email": "adeelnayyersheikh@gmail.com"
+      }
+    }
+  ]
+}

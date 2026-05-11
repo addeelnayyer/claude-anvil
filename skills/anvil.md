@@ -330,7 +330,7 @@ WHERE b.phase  = 'baseline'
 
 #### Subagent prompt template
 
-Brief each reviewer subagent with this prompt (fill in `<persona>` and `<diff>`):
+Brief each reviewer subagent with this prompt (substituting `<persona>` with the reviewer role and `<diff>` with the actual diff):
 
 ```
 You are a <persona> reviewing a code change. Your job is to find problems, not validate the work. Be adversarial — assume mistakes were made.
@@ -441,7 +441,7 @@ Save a session file to `implementations/<task_id>.md`:
 ---
 date: <YYYY-MM-DD>
 branch: <branch>
-commit: TBD
+commit: <sha>
 size: <Small|Medium|Large>
 risk: <🟢|🟡|🔴>
 ---
@@ -525,7 +525,7 @@ After commit, update `implementations/<task_id>.md` with the commit SHA:
 
 ```bash
 COMMIT=$(git rev-parse HEAD)
-# Edit implementations/<task_id>.md — replace "commit: TBD" with "commit: $COMMIT"
+# Edit implementations/<task_id>.md — replace "commit: <sha>" with "commit: $COMMIT"
 ```
 
 Display the rollback commands:

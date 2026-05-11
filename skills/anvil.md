@@ -277,3 +277,139 @@ Write code changes using `Edit` and `Write` tools.
 - Do not run any verification during this phase — that is Phase 6's responsibility
 
 **If implementation reveals unexpected complexity** (the file is larger than expected, there are undocumented dependencies, the Phase 3b approach won't work): stop, report what was found, return to Phase 3b with a revised plan. Do not push forward with an approach that is failing.
+
+---
+
+## Phase 6 — Verify (The Forge)
+
+No code is shown to the user until The Forge completes. This is the most critical phase.
+
+### 6a — IDE Diagnostics
+
+Run `mcp__ide__getDiagnostics` on every changed file and every file that imports a changed file. INSERT each result as `phase='after'` using the same pattern as Phase 4c.
+
+### 6b — Verification Cascade
+
+Re-run every check from Phase 4 Baseline using the exact same commands. INSERT every result as `phase='after'`.
+
+After running, query for regressions:
+
+```bash
+sqlite3 .anvil/checks.db "
+SELECT b.check_name,
+       b.exit_code AS baseline_exit,
+       a.exit_code AS after_exit
+FROM anvil_checks b
+JOIN anvil_checks a
+  ON b.check_name = a.check_name
+ AND b.task_id    = a.task_id
+WHERE b.phase  = 'baseline'
+  AND a.phase  = 'after'
+  AND b.passed = 1
+  AND a.passed = 0;
+"
+```
+
+**If regressions exist:** fix them before proceeding to 6c. Do not run adversarial review against a failing build.
+
+### 6c — Adversarial Review
+
+**Small tasks:** skip this step entirely.
+
+**Medium tasks:** spawn 1 adversarial subagent (`correctness-reviewer`).
+
+**Large tasks or any 🔴 file:** spawn all 3 adversarial subagents **in parallel** (single `Agent` tool call block with all three).
+
+#### Reviewer personas
+
+| Subagent name | Adversarial focus |
+|---|---|
+| `security-reviewer` | Auth bypasses, injection vulnerabilities, secrets committed to code, insecure defaults, missing input validation |
+| `correctness-reviewer` | Logic errors, off-by-one errors, race conditions, missing error handling, unhandled edge cases |
+| `performance-reviewer` | N+1 queries, blocking calls in async contexts, memory leaks, O(n²) loops, missing pagination |
+
+#### Subagent prompt template
+
+Brief each reviewer subagent with this prompt (fill in `<persona>` and `<diff>`):
+
+```
+You are a <persona> reviewing a code change. Your job is to find problems, not validate the work. Be adversarial — assume mistakes were made.
+
+Here is the diff of all changed files:
+<git diff output>
+
+Return your findings in this exact format:
+VERDICT: PASS | FAIL | WARN
+ISSUES:
+- [SEVERITY: critical|high|medium|low] <description> at <file>:<line>
+RECOMMENDATION: <one sentence>
+
+If you find no issues return VERDICT: PASS with no ISSUES listed.
+```
+
+#### INSERT reviewer results
+
+For each reviewer response, INSERT into the ledger:
+
+```bash
+sqlite3 .anvil/checks.db "
+INSERT INTO anvil_checks (task_id, phase, check_name, tool, command, exit_code, output_snippet, passed)
+VALUES (
+  '<task_id>',
+  'review',
+  '<reviewer-name>',
+  'Agent',
+  'adversarial review',
+  <0 if FAIL, 1 if PASS or WARN>,
+  '<VERDICT line + first 400 chars of ISSUES>',
+  <1 if PASS or WARN, 0 if FAIL>
+);
+"
+```
+
+#### Fix loop
+
+If any reviewer returns `VERDICT: FAIL`:
+1. Fix all `critical` and `high` severity issues using `Edit`
+2. Re-run Phase 6b (cascade) and Phase 6c (adversarial review) — this is **round 2**
+3. If issues remain after round 2: **stop fixing**. Surface them in the Evidence Bundle with `Confidence: Low`.
+
+**Hard gate:** Never present code after more than 2 fix rounds without user acknowledgment.
+
+**Hard gate:** If build or tests are still failing after round 2, revert all changes:
+```bash
+git restore .
+```
+Then report: what was attempted, what failed, and what each reviewer (`security-reviewer`, `correctness-reviewer`, `performance-reviewer`) found. Never present broken code.
+
+### 6d — Operational Readiness (Large tasks only)
+
+Check for:
+- New environment variables not documented in `.env.example` or README
+- Hardcoded secrets or API keys (grep for `sk-`, `ghp_`, `password =`, `secret =`)
+- Logging/observability: unchanged or improved (never reduced)
+- Migration files: do they include a rollback?
+
+### 6e — Generate Evidence Bundle
+
+Run this query and store the output for Phase 8:
+
+```bash
+sqlite3 .anvil/checks.db "
+SELECT check_name,
+       phase,
+       exit_code,
+       passed,
+       substr(output_snippet, 1, 200) AS snippet
+FROM anvil_checks
+WHERE task_id = '<task_id>'
+ORDER BY check_name, phase;
+"
+```
+
+**Determine Confidence level:**
+- **High:** all `passed=1` in `phase='after'`, all reviewers PASS or WARN with no criticals
+- **Medium:** some WARNs exist, no criticals, no regressions
+- **Low:** any critical remaining after round 2, or any unresolved regression
+
+**Hard gate:** Zero `passed=1` rows in `phase='after'` → cannot proceed to Phase 8.

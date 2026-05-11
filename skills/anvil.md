@@ -262,3 +262,18 @@ VALUES (
 sqlite3 .anvil/checks.db "SELECT COUNT(*) FROM anvil_checks WHERE task_id='<task_id>' AND phase='baseline';"
 ```
 Expected: integer > 0.
+
+---
+
+## Phase 5 — Implement
+
+Write code changes using `Edit` and `Write` tools.
+
+**Rules:**
+- Follow patterns discovered in Phase 3 Survey — do not invent new patterns
+- Prefer `Edit` over `Write` for existing files (sends only the diff, not the full file)
+- Never use `git add -A` or `git add .` — only stage specific named files
+- For each file being changed: create a `TaskCreate` subtask, mark `in_progress` before editing, mark `completed` after
+- Do not run any verification during this phase — that is Phase 6's responsibility
+
+**If implementation reveals unexpected complexity** (the file is larger than expected, there are undocumented dependencies, the Phase 3b approach won't work): stop, report what was found, return to Phase 3b with a revised plan. Do not push forward with an approach that is failing.

@@ -182,3 +182,83 @@ Options: "Looks good, proceed" / "I want to revise the scope" / "Cancel"
 **If any 🔴 file is listed:** trigger Pushback Protocol before this confirmation.
 
 **Hard gate:** Do not proceed to Phase 4 without user confirmation of the plan.
+
+---
+
+## Phase 4 — Baseline
+
+Capture the project's verification state **before any code changes**.
+
+### 4a — Bootstrap the ledger
+
+```bash
+mkdir -p .anvil
+sqlite3 .anvil/checks.db "
+CREATE TABLE IF NOT EXISTS anvil_checks (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id        TEXT,
+  phase          TEXT,
+  check_name     TEXT,
+  tool           TEXT,
+  command        TEXT,
+  exit_code      INTEGER,
+  output_snippet TEXT,
+  passed         INTEGER,
+  ts             DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+"
+```
+
+If `sqlite3` is not installed: warn the user, use `AskUserQuestion` with options "Use markdown fallback (.anvil/evidence.md)" / "Install sqlite3 first (recommended)" / "Cancel". The markdown fallback reduces auditability.
+
+### 4b — Discover and run the verification suite
+
+Discover which checks apply from project config:
+
+| Config file | Check to run |
+|---|---|
+| `tsconfig.json` | `npx tsc --noEmit 2>&1` |
+| `package.json` with `jest` | `npx jest --passWithNoTests 2>&1` |
+| `package.json` with `vitest` | `npx vitest run 2>&1` |
+| `.eslintrc*` or `eslint.config*` | `npx eslint src/ 2>&1` |
+| `Cargo.toml` | `cargo build 2>&1` |
+| `pyproject.toml` or `setup.py` | `python -m pytest 2>&1` |
+| `go.mod` | `go build ./... 2>&1` and `go test ./... 2>&1` |
+
+Also run `mcp__ide__getDiagnostics` on every file in scope from Phase 3b.
+
+**Tier 3 fallback** (only if Tiers 1–2 produce no runtime signal):
+```bash
+node -e "require('./src/index')" 2>&1   # or language equivalent
+```
+
+### 4c — INSERT every result
+
+For each check, immediately INSERT into the ledger. Replace `<task_id>`, `<check_name>`, `<command>`, `<exit_code>`, `<output>` with actual values:
+
+```bash
+EXIT_CODE=$?
+OUTPUT=$(cat /tmp/anvil_check_output | head -c 500)
+sqlite3 .anvil/checks.db "
+INSERT INTO anvil_checks (task_id, phase, check_name, tool, command, exit_code, output_snippet, passed)
+VALUES (
+  '<task_id>',
+  'baseline',
+  '<check_name>',
+  'Bash',
+  '<exact command run>',
+  $EXIT_CODE,
+  '$(echo "$OUTPUT" | sed "s/'/''/g")',
+  $([ $EXIT_CODE -eq 0 ] && echo 1 || echo 0)
+);
+"
+```
+
+**Hard gate:** If no rows can be inserted (sqlite3 unavailable and fallback refused): halt. Do not proceed to Phase 5.
+
+**Hard gate:** At least one baseline row must exist before Phase 5 begins. Verify:
+
+```bash
+sqlite3 .anvil/checks.db "SELECT COUNT(*) FROM anvil_checks WHERE task_id='<task_id>' AND phase='baseline';"
+```
+Expected: integer > 0.

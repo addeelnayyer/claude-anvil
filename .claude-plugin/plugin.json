@@ -4,12 +4,10 @@
   "version": "1.0.0",
   "author": {
     "name": "Adeel Nayyer",
-    "url": "https://github.com/addeelnayyer/claude-anvil"
+    "email": "adeelnayyersheikh@gmail.com"
   },
   "homepage": "https://github.com/addeelnayyer/claude-anvil",
   "repository": "https://github.com/addeelnayyer/claude-anvil",
   "license": "MIT",
-  "keywords": ["verification", "code-review", "adversarial", "evidence"],
-  "agents": "../agents/",
-  "mcpServers": "../.mcp.json"
+  "keywords": ["verification", "code-review", "adversarial", "evidence"]
 }

@@ -95,3 +95,90 @@ Triggered from Phase 0a (and at any later phase if new information changes the r
 - Never proceed past Pushback without a user choice
 - If user chooses B: return to Phase 0a with the revised approach
 - If user chooses C: stop and summarize what was found
+
+---
+
+## Phase 0b — Git Hygiene
+
+```bash
+git status
+git branch --show-current
+```
+
+- If `git status` shows uncommitted changes: use `AskUserQuestion` to offer stashing. Options: "Stash and continue" / "Commit first" / "Proceed with dirty tree (risky)"
+- If on `main` or `master` and task is Large: use `AskUserQuestion` to confirm or create a feature branch. Options: "Create feature branch" / "Stay on main (I accept the risk)"
+- Run `git worktree list` and note any active worktrees
+
+---
+
+## Phase 1 — Understand
+
+Write out the following internally (do not show to user unless asked):
+
+- **Primary goal:** one sentence
+- **Acceptance criteria:** bullet list — what does "done" look like?
+- **Assumptions:** what you are assuming that isn't stated
+- **Out of scope:** what you will NOT touch
+- **Files likely affected:** from Phase 0a Boost, refined by any new context
+
+---
+
+## Phase 2 — Recall
+
+Read the Claude Code memory system (`~/.claude/projects/…/memory/`) for facts about files being changed.
+
+Look for:
+- Build command quirks (e.g. "jest requires `--forceExit` in this repo")
+- Known flaky tests to exclude
+- Past regressions in these files
+- Preferred patterns from previous Anvil sessions
+- Any existing session files in `implementations/` for these files
+
+Incorporate relevant findings into Phase 3b (Plan) and Phase 4 (Baseline).
+
+---
+
+## Phase 3 — Survey
+
+Search the codebase for patterns relevant to the implementation:
+
+```bash
+# Find similar functions or types
+grep -r "FunctionName\|TypeName" src/ --include="*.ts" -l
+
+# Find existing test patterns
+find . -name "*.test.*" -not -path "*/node_modules/*" | head -20
+```
+
+Use `Read` to examine the most relevant files in full.
+
+**Prefer modifying over creating.** If an existing function can be extended or a pattern reused, prefer that over new files.
+
+Document: which patterns you will follow, which files you will NOT touch, and why.
+
+---
+
+## Phase 3b — Plan
+
+Produce and display a file-level change plan:
+
+```
+## Anvil Plan — <task_id>
+
+### Files to change:
+- `src/auth/login.ts` [🟡] — modify `validateToken()` to handle expired tokens
+- `src/auth/login.test.ts` [🟢] — add regression test for expired token case
+
+### Files surveyed, NOT changing:
+- `src/auth/session.ts` — reviewed, no changes needed
+
+### Task size: Medium
+### Estimated risk: 🟡
+```
+
+**Use `AskUserQuestion` to confirm before proceeding.**
+Options: "Looks good, proceed" / "I want to revise the scope" / "Cancel"
+
+**If any 🔴 file is listed:** trigger Pushback Protocol before this confirmation.
+
+**Hard gate:** Do not proceed to Phase 4 without user confirmation of the plan.

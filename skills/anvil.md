@@ -413,3 +413,168 @@ ORDER BY check_name, phase;
 - **Low:** any critical remaining after round 2, or any unresolved regression
 
 **Hard gate:** Zero `passed=1` rows in `phase='after'` → cannot proceed to Phase 8.
+
+---
+
+## Phase 7 — Learn
+
+Write a `project` memory entry to `~/.claude/projects/…/memory/anvil_<task_id>.md`:
+
+```markdown
+---
+name: anvil-<task_id>
+description: Anvil session — <one-line summary of what was changed>
+type: project
+---
+
+**Task:** <task_id>
+**Date:** <YYYY-MM-DD>
+**Files changed:** <list>
+**Verification commands confirmed working:** <list with exact commands>
+**Quirks discovered:** <e.g. "jest requires --forceExit in this repo">
+**Patterns confirmed:** <e.g. "uses repository pattern in src/db/">
+```
+
+Save a session file to `implementations/<task_id>.md`:
+
+```markdown
+---
+date: <YYYY-MM-DD>
+branch: <branch>
+commit: TBD
+size: <Small|Medium|Large>
+risk: <🟢|🟡|🔴>
+---
+
+## Summary
+<one paragraph>
+
+## Files Changed
+<list with one-line description of each change>
+
+## Verification Results
+<Evidence Bundle query output from Phase 6e>
+
+## Known Issues
+<any WARN-level findings not fixed, or "None">
+```
+
+---
+
+## Phase 8 — Present
+
+Display to the user in this order:
+
+**1. Unified diff of all changes:**
+```bash
+git diff HEAD
+```
+
+**2. Evidence Bundle:**
+```
+## Evidence Bundle — <task_id>
+
+### Verification Results (Baseline vs After)
+<sqlite3 SELECT output from Phase 6e>
+
+### Regressions
+<list of check_name where baseline passed=1 and after passed=0 | "None">
+
+### Reviewer Verdicts
+security-reviewer: PASS | WARN | FAIL | UNAVAILABLE
+correctness-reviewer: PASS | WARN | FAIL | UNAVAILABLE
+performance-reviewer: PASS | WARN | FAIL | UNAVAILABLE
+
+### Outstanding Issues
+<remaining WARN findings with severity | "None">
+
+### Confidence: High | Medium | Low
+```
+
+**3. Rollback option (always shown before committing):**
+```bash
+git restore .   # discard all changes
+```
+
+**Use `AskUserQuestion` before committing:**
+- "Commit — confidence is <level>"
+- "Let me review more before committing"
+- "Revert everything"
+
+**Hard gate:** Do not proceed to Phase 9 without user choosing "Commit".
+
+---
+
+## Phase 9 — Commit
+
+Stage only the specific files that were changed (never `git add -A`):
+
+```bash
+git add <file1> <file2> ...   # list each file explicitly
+git commit -m "$(cat <<'EOF'
+<imperative summary of the change>
+
+Anvil-verified: <task_id>
+Confidence: <High|Medium|Low>
+Co-Authored-By: Anvil <anvil@claude.code>
+EOF
+)"
+```
+
+After commit, update `implementations/<task_id>.md` with the commit SHA:
+
+```bash
+COMMIT=$(git rev-parse HEAD)
+# Edit implementations/<task_id>.md — replace "commit: TBD" with "commit: $COMMIT"
+```
+
+Display the rollback commands:
+```bash
+# Revert this commit (creates a new undo commit):
+git revert HEAD --no-edit
+
+# Soft-reset (keeps changes staged for re-commit):
+git reset --soft HEAD~1
+```
+
+Mark all Anvil phase `TaskCreate` entries as `completed` via `TaskUpdate`.
+
+---
+
+## Hard Gates
+
+These are non-negotiable stops. If any gate fails, halt and report clearly — never work around them silently.
+
+| Gate | Trigger condition | Required action |
+|---|---|---|
+| No baseline | Phase 4 produced zero ledger rows | Halt. Report sqlite3 status. |
+| No after-verification | Phase 6b produced zero `phase='after'` rows | Halt. Re-run verification. |
+| Regression unresolved | Baseline `passed=1` check is now `passed=0`, unacknowledged | Fix or get explicit user confirmation to proceed |
+| Insufficient reviewers | Medium task with 0 reviewers; Large with <3 | Re-run review or mark UNAVAILABLE |
+| Fix rounds exceeded | Still `VERDICT: FAIL` after round 2 | Revert with `git restore .`. Report. Never present. |
+| Broken code | Any critical issue unresolved and unacknowledged | Revert. Never present broken code. |
+| No user confirmation | Phase 3b plan not confirmed | Do not start Phase 4. |
+| No Evidence Bundle ack | User has not acknowledged Phase 8 output | Do not run Phase 9. |
+
+---
+
+## Error Handling
+
+**sqlite3 not installed:**
+Use `AskUserQuestion`:
+- "Install sqlite3 first (recommended — preserves full auditability)"
+- "Use markdown fallback: write results to .anvil/evidence.md"
+- "Cancel"
+If fallback chosen: write a markdown table to `.anvil/evidence.md` with the same columns as `anvil_checks`. Note in Evidence Bundle: "SQL ledger unavailable — markdown fallback used."
+
+**No test suite found:**
+Proceed with Tier 1 (IDE diagnostics) + Tier 2 (build/lint) only. Run Tier 3 import/load fallback. Note in Evidence Bundle: "No test suite detected — runtime signal from Tier 3 import only."
+
+**Subagent reviewer fails (Agent tool error):**
+Retry the failing reviewer once. If still failing, mark as `UNAVAILABLE` in Evidence Bundle. Set Confidence to Medium minimum regardless of other results.
+
+**Git not initialized:**
+Skip Phases 0b and 9. Warn user: "This project has no git history — commit and rollback phases are unavailable." Proceed with all other phases.
+
+**Implementation reveals scope beyond plan:**
+Return to Phase 3b with updated file list. Do not expand scope silently. Re-confirm with user before continuing.
